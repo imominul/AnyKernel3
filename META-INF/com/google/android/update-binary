@@ -1,17 +1,25 @@
 #!/sbin/sh
 # AnyKernel3 Backend (DO NOT CHANGE)
 # osm0sis @ xda-developers
+# Modified for NetHunter
+#all lines starting with ## are skipped for Boot and ramdisk modification only
+#All ## must be removed if we use it only for kernel installation
 
-OUTFD=/proc/self/fd/$2;
+##OUTFD=/proc/self/fd/$2;
+OUTFD=$(cat /tmp/console)
+[ "$OUTFD" ] || OUTFD=/proc/$$/fd/1
+
 ZIPFILE="$3";
 
-ps | grep zygote | grep -v grep >/dev/null && BOOTMODE=true || BOOTMODE=false;
+BOOTMODE=false;
+ps | grep zygote | grep -v grep >/dev/null && BOOTMODE=true;
 $BOOTMODE || ps -A 2>/dev/null | grep zygote | grep -v grep >/dev/null && BOOTMODE=true;
 
-$BOOTMODE && DIR=/sdcard || DIR=$(dirname "$ZIPFILE");
+DIR=/sdcard;
+$BOOTMODE || DIR=$(dirname "$ZIPFILE");
 
-test -d /postinstall/tmp && POSTINSTALL=/postinstall;
-test "$AKHOME" || AKHOME=$POSTINSTALL/tmp/anykernel;
+##test -d /postinstall/tmp && POSTINSTALL=/postinstall/tmp;
+test "$AKHOME" || AKHOME=/tmp/nethunter/boot-patcher;
 test "$ANDROID_ROOT" || ANDROID_ROOT=/system;
 
 ui_print() {
@@ -40,7 +48,8 @@ mount_apex() {
   test -d /system/apex || return 1;
   local apex dest loop minorx num;
   setup_mountpoint /apex;
-  test -e /dev/block/loop1 && minorx=$($BB ls -l /dev/block/loop1 | $BB awk '{ print $6 }') || minorx=1;
+  minorx=1;
+  test -e /dev/block/loop1 && minorx=$($BB ls -l /dev/block/loop1 | $BB awk '{ print $6 }');
   num=0;
   for apex in /system/apex/*; do
     dest=/apex/$($BB basename $apex .apex);
@@ -93,14 +102,14 @@ mount_all() {
   $BB mount -o ro -t auto /vendor 2>/dev/null;
   setup_mountpoint $ANDROID_ROOT;
   if ! is_mounted $ANDROID_ROOT; then
-    $BB mount -o ro -t auto $ANDROID_ROOT 2>/dev/null;
+    $BB mount -o rw -t auto $ANDROID_ROOT 2>/dev/null;
   fi;
   case $ANDROID_ROOT in
     /system_root) setup_mountpoint /system;;
     /system)
       if ! is_mounted /system && ! is_mounted /system_root; then
         setup_mountpoint /system_root;
-        $BB mount -o ro -t auto /system_root;
+        $BB mount -o rw -t auto /system_root;
       elif [ -f /system/system/build.prop ]; then
         setup_mountpoint /system_root;
         $BB mount --move /system /system_root;
@@ -109,7 +118,7 @@ mount_all() {
         $BB umount /system;
         $BB umount -l /system 2>/dev/null;
         test -e /dev/block/bootdevice/by-name/system || local slot=$(getprop ro.boot.slot_suffix 2>/dev/null);
-        $BB mount -o ro -t auto /dev/block/bootdevice/by-name/system$slot /system_root;
+        $BB mount -o rw -t auto /dev/block/bootdevice/by-name/system$slot /system_root;
       fi;
     ;;
   esac;
@@ -148,6 +157,7 @@ setup_env() {
     $BB sed -i 's; / ; /system_root ;' /etc/fstab;
   fi;
   umount_all;
+  ui_print "- Mounting system in rw!;
   mount_all;
   OLD_LD_PATH=$LD_LIBRARY_PATH;
   OLD_LD_PRE=$LD_PRELOAD;
@@ -171,20 +181,20 @@ setup_env() {
 }
 restore_env() {
   $BOOTMODE && return 1;
-  local dir;
+  ##local dir;
   unset -f getprop;
   test "$OLD_LD_PATH" && export LD_LIBRARY_PATH=$OLD_LD_PATH;
   test "$OLD_LD_PRE" && export LD_PRELOAD=$OLD_LD_PRE;
   test "$OLD_LD_CFG" && export LD_CONFIG_FILE=$OLD_LD_CFG;
-  umount_all;
-  test -L /etc_link && $BB rm -rf /etc/*;
-  (for dir in /apex /system /system_root /etc; do
-    if [ -L "${dir}_link" ]; then
-      rmdir $dir;
-      $BB mv -f ${dir}_link $dir;
-    fi;
+  ##umount_all;
+  ##test -L /etc_link && $BB rm -rf /etc/*;
+  ##(for dir in /apex /system /system_root /etc; do
+  ##if [ -L "${dir}_link" ]; then
+  ##rmdir $dir;
+  ##$BB mv -f ${dir}_link $dir;
+  ##fi;
   done;
-  $BB umount -l /dev/random) 2>/dev/null;
+  ##$BB umount -l /dev/random) 2>/dev/null;
 }
 debugging() {
   case $(basename "$ZIPFILE" .zip) in
@@ -198,6 +208,7 @@ debugging() {
 cleanup() {
   cd $(dirname $AKHOME);
   rm -rf $AKHOME;
+  rm -rf $POSTINSTALL;
 }
 abort() {
   ui_print "$@";
@@ -372,15 +383,19 @@ do_modules() {
   cd $AKHOME;
 }
 
-show_progress 1.34 4;
-ui_print " ";
-cleanup;
+##show_progress 1.34 4;
+##ui_print "";
+##cleanup;
+##mkdir -p $POSTINSTALL;
+
 mkdir -p $AKHOME/bin;
 cd $AKHOME;
-unzip -o "$ZIPFILE";
-if [ $? != 0 -o ! "$(ls tools)" ]; then
-  abort "Unzip failed. Aborting...";
-fi;
+
+##unzip -o "$ZIPFILE";
+##if [ $? != 0 -o ! "$(ls tools)" ]; then
+##abort "Unzip failed. Aborting...";
+##fi;
+
 for ARCH32 in x86 arm; do
   if [ -d $AKHOME/tools/$ARCH32 ]; then
     BB=$AKHOME/tools/$ARCH32/busybox;
@@ -402,25 +417,25 @@ fi;
 
 if [ -f banner ]; then
   ui_printfile banner;
-  ui_print " " " ";
+  ui_print "" "";
 fi;
 
 KERNEL_STRING="$(file_getprop anykernel.sh kernel.string)";
 ui_print "$KERNEL_STRING";
 if [ -f version ]; then
-  ui_print " ";
+  ui_print "";
   ui_printfile version;
-  ui_print " ";
+  ui_print "";
 fi;
-ui_print " " "AnyKernel3 by osm0sis @ xda-developers" " " " ";
+ui_print "- AnyKernel3 by osm0sis @ xda-developers";
 
 setup_env;
 
-do_devicecheck;
-do_versioncheck;
-do_levelcheck;
+##do_devicecheck;
+##do_versioncheck;
+##do_levelcheck;
 
-ui_print "Installing...";
+ui_print "- Installing...";
 CORE=$($BB grep -oE 'ak.*core.sh' anykernel.sh);
 test -f tools/$CORE || $BB ln -s $AKHOME/tools/ak*-core.sh $AKHOME/tools/$CORE;
 PATH="$AKHOME/bin:$PATH" home=$AKHOME $BB ash anykernel.sh $2;
@@ -428,7 +443,7 @@ if [ $? != 0 ]; then
   abort;
 fi;
 
-do_modules;
+##do_modules;
 
 debugging;
 restore_env;
@@ -437,4 +452,4 @@ if [ "$(file_getprop anykernel.sh do.cleanup)" == 1 ]; then
   cleanup;
 fi;
 
-ui_print " " " " "Done!";
+ui_print "- Done!";
