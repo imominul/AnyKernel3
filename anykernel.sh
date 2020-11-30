@@ -1,4 +1,4 @@
-# AnyKernel3 Ramdisk Mod Script
+#AnyKernel3 Ramdisk Mod Script
 # osm0sis @ xda-developers
 #Modified for NetHunter
 
@@ -97,13 +97,7 @@ install() {
 	cp -rp $home/ramdisk-patch/* "$SYSTEM_ROOT/";
 }
 
-if [ ! "$(grep /init.nethunter.rc $SYSTEM_ROOT/init.rc)" ]; then
-  insert_after_last "$SYSTEM_ROOT/init.rc" "import .*\.rc" "import /init.nethunter.rc";
-fi;
 
-if [ ! "$(grep /dev/hidg* $SYSTEM_ROOT/ueventd.rc)" ]; then
-  insert_after_last "$SYSTEM_ROOT/ueventd.rc" "/dev/kgsl.*root.*root" "# HID driver\n/dev/hidg* 0666 root root";
-fi;
 
 ## End NetHunter additions
 
@@ -128,6 +122,14 @@ if [ -d $ramdisk/.backup ]; then
   patch_cmdline "skip_override" "skip_override";
 else
   patch_cmdline "skip_override" "";
+fi;
+
+if [ ! "$(grep /init.nethunter.rc $SYSTEM_ROOT/init.rc)" ]; then
+  insert_after_last "$SYSTEM_ROOT/init.rc" "import .*\.rc" "import /init.nethunter.rc";
+fi;
+
+if [ ! "$(grep /dev/hidg* $SYSTEM_ROOT/ueventd.rc)" ]; then
+  insert_after_last "$SYSTEM_ROOT/ueventd.rc" "/dev/kgsl.*root.*root" "# HID driver\n/dev/hidg* 0666 root root";
 fi;
 
 # end ramdisk changes
