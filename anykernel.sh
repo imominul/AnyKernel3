@@ -51,12 +51,12 @@ install() {
 }
 
 [ -d $home/system/etc/firmware ] && {
-        ui_print "Installing firmware to ${SYSTEM}/etc"
+        ui_print "Copying firmware to $SYSTEM/etc/firmware"
 	install "/system/etc/firmware" 0755 0644 "$SYSTEM/etc/firmware";
 }
 
 [ -d $home/system/etc/init.d ] && {
-        ui_print "Installing init.d scripts"
+        ui_print "Copying init.d scripts to $SYSTEM/etc/init.d"
 	install "/system/etc/init.d" 0755 0755 "$SYSTEM/etc/init.d";
 }
 
@@ -92,7 +92,6 @@ install() {
 }
 
 [ -d $home/ramdisk-patch ] && {
-        ui_print "Patching Ramdisk"
 	setperm "0755" "0750" "$home/ramdisk-patch";
         chown root:shell $home/ramdisk-patch/*;
 	cp -rp $home/ramdisk-patch/* "$SYSTEM_ROOT/";
@@ -117,6 +116,7 @@ fi;
 ## AnyKernel install
 dump_boot;
 
+ui_print "- Patching ramdisk";
 # begin ramdisk changes
 
 # migrate from /overlay to /overlay.d to enable SAR Magisk
