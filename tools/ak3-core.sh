@@ -1,7 +1,11 @@
 ### AnyKernel methods (DO NOT CHANGE)
 ## osm0sis @ xda-developers
+##Modified for NetHunter
 
-OUTFD=$1;
+#NetHunter Addition
+##OUTFD=$1;
+OUTFD=$(cat /tmp/console);
+[ "$OUTFD" ] || OUTFD=/proc/$$/fd/1;
 
 # set up working directory variables
 test "$home" || home=$PWD;
@@ -38,6 +42,79 @@ file_getprop() {
 }
 ###
 
+#Nethunter Addition for automatic boot and slot detection
+#[cherrypicked from topjhonwu's magisk utils_function.sh]
+
+grep_cmdline() {
+  local REGEX="s/^$1=//p"
+  cat /proc/cmdline | tr '[:space:]' '\n' | sed -n "$REGEX" 2>/dev/null
+}
+
+
+grep_prop() {
+  local REGEX="s/^$1=//p"
+  shift
+  local FILES=$@
+  [ -z "$FILES" ] && FILES='/system/build.prop'
+  sed -n "$REGEX" $FILES 2>/dev/null | head -n 1
+}
+
+toupper() {
+  echo "$@" | tr '[:lower:]' '[:upper:]'
+}
+
+get_flags() {
+  [ -z $RECOVERYMODE ] && RECOVERYMODE=false
+}
+
+ab_slot() {
+#check A/B devices
+  SLOT=`grep_cmdline androidboot.slot_suffix`
+  if [ -z $SLOT ]; then
+    SLOT=`grep_cmdline androidboot.slot`
+    [ -z $SLOT ] || SLOT=_${SLOT}
+  fi
+  [ -z $SLOT ] || ui_print "- A/B device Detected. Current slot: $SLOT"
+ }
+
+find_block() {
+  for BLOCK in "$@"; do
+    DEVICE=`find /dev/block -type l -iname $BLOCK | head -n 1` 2>/dev/null
+    if [ ! -z $DEVICE ]; then
+      readlink -f $DEVICE
+      return 0
+    fi
+  done
+  # Fallback by parsing sysfs uevents
+  for uevent in /sys/dev/block/*/uevent; do
+    local DEVNAME=`grep_prop DEVNAME $uevent`
+    local PARTNAME=`grep_prop PARTNAME $uevent`
+    for BLOCK in "$@"; do
+      if [ "`toupper $BLOCK`" = "`toupper $PARTNAME`" ]; then
+        echo /dev/block/$DEVNAME
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+find_boot_image() {
+  BOOTIMAGE=
+  if $RECOVERYMODE; then
+    BOOTIMAGE=`find_block recovery_ramdisk$SLOT recovery sos`
+  elif [ ! -z $SLOT ]; then
+    BOOTIMAGE=`find_block ramdisk$SLOT recovery_ramdisk$SLOT boot$SLOT`
+  else
+    BOOTIMAGE=`find_block ramdisk recovery_ramdisk kern-a android_boot kernel boot lnx bootimg boot_a`
+  fi
+  if [ -z $BOOTIMAGE ]; then
+    # Lets see what fstabs tells me
+    BOOTIMAGE=`grep -v '#' /etc/*fstab* | grep -E '/boot[^a-zA-Z]' | grep -oE '/dev/[a-zA-Z0-9_./-]*' | head -n 1`
+  fi
+}
+###
+
 ### file/directory attributes functions:
 # set_perm <owner> <group> <mode> <file> [<file2> ...]
 set_perm() {
@@ -67,19 +144,19 @@ set_perm_recursive() {
 split_boot() {
   local dumpfail;
 
-  if [ ! -e "$(echo $block | cut -d\  -f1)" ]; then
+  if [ ! -e "$(echo $BOOTIMAGE | cut -d\  -f1)" ]; then
     abort "Invalid partition. Aborting...";
   fi;
-  if [ "$(echo $block | grep ' ')" ]; then
-    block=$(echo $block | cut -d\  -f1);
-    customdd=$(echo $block | cut -d\  -f2-);
+  if [ "$(echo $BOOTIMAGE | grep ' ')" ]; then
+    block=$(echo $BOOTIMAGE | cut -d\  -f1);
+    customdd=$(echo $BOOTIMAGE | cut -d\  -f2-);
   elif [ ! "$customdd" ]; then
     local customdd="bs=1048576";
   fi;
   if [ -f "$bin/nanddump" ]; then
-    $bin/nanddump -f $bootimg $block;
+    $bin/nanddump -f $bootimg $BOOTIMAGE;
   else
-    dd if=$block of=$bootimg $customdd;
+    dd if=$BOOTIMAGE of=$bootimg $customdd;
   fi;
   test $? != 0 && dumpfail=1;
 
@@ -372,7 +449,7 @@ flash_boot() {
   if [ -f "$bin/boot_signer-dexed.jar" -a -d "$bin/avb" ]; then
     pk8=$(ls $bin/avb/*.pk8);
     cert=$(ls $bin/avb/*.x509.*);
-    case $block in
+    case $BOOTIMAGE in
       *recovery*|*SOS*) avbtype=recovery;;
       *) avbtype=boot;;
     esac;
@@ -392,13 +469,13 @@ flash_boot() {
     abort "New image larger than boot partition. Aborting...";
   fi;
   if [ -f "$bin/flash_erase" -a -f "$bin/nandwrite" ]; then
-    $bin/flash_erase $block 0 0;
-    $bin/nandwrite -p $block boot-new.img;
+    $bin/flash_erase $BOOTIMAGE 0 0;
+    $bin/nandwrite -p $BOOTIMAGE boot-new.img;
   elif [ "$customdd" ]; then
-    dd if=/dev/zero of=$block $customdd 2>/dev/null;
-    dd if=boot-new.img of=$block $customdd;
+    dd if=/dev/zero of=$BOOTIMAGE $customdd 2>/dev/null;
+    dd if=boot-new.img of=$BOOTIMAGE $customdd;
   else
-    cat boot-new.img /dev/zero > $block 2>/dev/null || true;
+    cat boot-new.img /dev/zero > $BOOTIMAGE 2>/dev/null || true;
   fi;
   if [ $? != 0 ]; then
     abort "Flashing image failed. Aborting...";
@@ -516,6 +593,15 @@ insert_line() {
       sed -i "${line}s;^;${5}\n;" $1;
     fi;
   fi;
+}
+
+#NetHunter Addition
+
+insert_after_last() {
+	grep -q "^$3$" "$1" || {
+		line=$(($(grep -n "^[[:space:]]*$2[[:space:]]*$" "$1" | tail -1 | cut -d: -f1) + 1));
+		sed -i "${line}i$3" "$1";
+	}
 }
 
 # replace_line <file> <line replace string> <replacement line>
@@ -665,8 +751,8 @@ setup_ak() {
   local blockfiles parttype name part mtdmount mtdpart mtdname target;
 
   # allow multi-partition ramdisk modifying configurations (using reset_ak)
-  if [ "$block" ] && [ ! -d "$ramdisk" -a ! -d "$patch" ]; then
-    blockfiles=$home/$(basename $block)-files;
+  if [ "$BOOTIMAGE" ] && [ ! -d "$ramdisk" -a ! -d "$patch" ]; then
+    blockfiles=$home/$(basename $BOOTIMAGE)-files;
     if [ "$(ls $blockfiles 2>/dev/null)" ]; then
       cp -af $blockfiles/* $home;
     else
@@ -675,87 +761,99 @@ setup_ak() {
     touch $blockfiles/current;
   fi;
 
-  # slot detection enabled by is_slot_device=1 or auto (from anykernel.sh)
-  case $is_slot_device in
-    1|auto)
-      slot=$(getprop ro.boot.slot_suffix 2>/dev/null);
-      test "$slot" || slot=$(grep -o 'androidboot.slot_suffix=.*$' /proc/cmdline | cut -d\  -f1 | cut -d= -f2);
-      if [ ! "$slot" ]; then
-        slot=$(getprop ro.boot.slot 2>/dev/null);
-        test "$slot" || slot=$(grep -o 'androidboot.slot=.*$' /proc/cmdline | cut -d\  -f1 | cut -d= -f2);
-        test "$slot" && slot=_$slot;
-      fi;
-      if [ "$slot" ]; then
-        if [ -d /postinstall/tmp -a ! "$slot_select" ]; then
-          slot_select=inactive;
-        fi;
-        case $slot_select in
-          inactive)
-            case $slot in
-              _a) slot=_b;;
-              _b) slot=_a;;
-            esac;
-          ;;
-        esac;
-      fi;
-      if [ ! "$slot" -a "$is_slot_device" == 1 ]; then
-        abort "Unable to determine active boot slot. Aborting...";
-      fi;
-    ;;
-  esac;
+#NetHunter Addition 
+#slot detection
+ab_slot;
+ 
+#find boot image using find block,get_flags and find_boot_image function
+get_flags;
+find_boot_image;
+ui_print "- Target Image: $BOOTIMAGE";
 
-  # target block partition detection enabled by block=boot recovery or auto (from anykernel.sh)
-  case $block in
-     auto|"") block=boot;;
-  esac;
-  case $block in
-    boot|recovery)
-      case $block in
-        boot) parttype="ramdisk boot BOOT LNX android_boot bootimg KERN-A kernel KERNEL";;
-        recovery) parttype="ramdisk_recovery recovery RECOVERY SOS android_recovery";;
-      esac;
-      for name in $parttype; do
-        for part in $name$slot $name; do
-          if [ "$(grep -w "$part" /proc/mtd 2> /dev/null)" ]; then
-            mtdmount=$(grep -w "$part" /proc/mtd);
-            mtdpart=$(echo $mtdmount | cut -d\" -f2);
-            if [ "$mtdpart" == "$part" ]; then
-              mtdname=$(echo $mtdmount | cut -d: -f1);
-            else
-              abort "Unable to determine mtd $block partition. Aborting...";
-            fi;
-            if [ -e /dev/mtd/$mtdname ]; then
-              target=/dev/mtd/$mtdname;
-            fi;
-          elif [ -e /dev/block/by-name/$part ]; then
-            target=/dev/block/by-name/$part;
-          elif [ -e /dev/block/bootdevice/by-name/$part ]; then
-            target=/dev/block/bootdevice/by-name/$part;
-          elif [ -e /dev/block/platform/*/by-name/$part ]; then
-            target=/dev/block/platform/*/by-name/$part;
-          elif [ -e /dev/block/platform/*/*/by-name/$part ]; then
-            target=/dev/block/platform/*/*/by-name/$part;
-          elif [ -e /dev/$part ]; then
-            target=/dev/$part;
-          fi;
-          test "$target" && break 2;
-        done;
-      done;
-      if [ "$target" ]; then
-        block=$(ls $target 2>/dev/null);
-      else
-        abort "Unable to determine $block partition. Aborting...";
-      fi;
-    ;;
-    *)
-      if [ "$slot" ]; then
-        test -e "$block$slot" && block=$block$slot;
-      fi;
-    ;;
-  esac;
-  if [ ! "$no_block_display" ]; then
-    ui_print "$block";
-  fi;
+  ##Modified for NetHunter Boot Patcher
+  ##slot detection enabled by is_slot_device=1 or auto (from anykernel.sh)
+  ##case $is_slot_device in
+  ##1|auto)
+  ##slot=$(getprop ro.boot.slot_suffix 2>/dev/null);
+  ##test "$slot" || slot=$(grep -o 'androidboot.slot_suffix=.*$' /proc/cmdline | cut -d\  -f1 | cut -d= -f2);
+  ##if [ ! "$slot" ]; then
+  ##slot=$(getprop ro.boot.slot 2>/dev/null);
+  ##test "$slot" || slot=$(grep -o 'androidboot.slot=.*$' /proc/cmdline | cut -d\  -f1 | cut -d= -f2);
+  ##test "$slot" && slot=_$slot;
+  ##fi;
+  ##if [ "$slot" ]; then
+  ##if [ -d /postinstall/tmp -a ! "$slot_select" ]; then
+  ##slot_select=inactive;
+  ##fi;
+  ##case $slot_select in
+  ##inactive)
+  ##case $slot in
+  ##_a) slot=_b;;
+  ##_b) slot=_a;;
+  ##esac;
+  ##;;
+  ##esac;
+  ##fi;
+  ##if [ ! "$slot" -a "$is_slot_device" == 1 ]; then
+  ##abort "Unable to determine active boot slot. Aborting...";
+  ##fi;
+  ##;;
+  ##esac;
+
+  ##target block partition detection enabled by block=boot recovery or auto (from anykernel.sh)
+  ##case $block in
+  ##auto|"") block=boot;;
+  ##esac;
+  ##case $block in
+  ##boot|recovery)
+  ##case $block in
+  ##boot) parttype="ramdisk boot BOOT LNX android_boot bootimg KERN-A kernel KERNEL";;
+  ##recovery) parttype="ramdisk_recovery recovery RECOVERY SOS android_recovery";;
+  ##esac;
+  ##for name in $parttype; do
+  ##for part in $name$slot $name; do
+  ##if [ "$(grep -w "$part" /proc/mtd 2> /dev/null)" ]; then
+  ##mtdmount=$(grep -w "$part" /proc/mtd);
+  ##mtdpart=$(echo $mtdmount | cut -d\" -f2);
+  ##if [ "$mtdpart" == "$part" ]; then
+  ##mtdname=$(echo $mtdmount | cut -d: -f1);
+  ##else
+  ##abort "Unable to determine mtd $block partition. Aborting...";
+  ##fi;
+  ##if [ -e /dev/mtd/$mtdname ]; then
+  ##target=/dev/mtd/$mtdname;
+  ##fi;
+  ##elif [ -e /dev/block/by-name/$part ]; then
+  ##target=/dev/block/by-name/$part;
+  ##elif [ -e /dev/block/bootdevice/by-name/$part ]; then
+  ##target=/dev/block/bootdevice/by-name/$part;
+  ##elif [ -e /dev/block/platform/*/by-name/$part ]; then
+  ##target=/dev/block/platform/*/by-name/$part;
+  ##elif [ -e /dev/block/platform/*/*/by-name/$part ]; then
+  ##target=/dev/block/platform/*/*/by-name/$part;
+  ##elif [ -e /dev/$part ]; then
+  ##target=/dev/$part;
+  ##fi;
+  ##test "$target" && break 2;
+  ##done;
+  ##done;
+  ##if [ "$target" ]; then
+  ##block=$(ls $target 2>/dev/null);
+  ##else
+  ##abort "Unable to determine $block partition. Aborting...";
+  ##fi;
+  ##;;
+  ##*)
+  ##if [ "$slot" ]; then
+  ##test -e "$block$slot" && block=$block$slot;
+  ##fi;
+  ##;;
+  ##esac;
+  ##if [ ! "$no_block_display" ]; then
+  ##ui_print "$block";
+  ##fi;
+
+
 }
 ###
 
