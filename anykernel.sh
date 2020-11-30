@@ -1,27 +1,29 @@
 # AnyKernel3 Ramdisk Mod Script
 # osm0sis @ xda-developers
+#Modified for NetHunter
 
 ## AnyKernel setup
 # begin properties
 properties() { '
-kernel.string=ExampleKernel by osm0sis @ xda-developers
-do.devicecheck=1
+kernel.string=
+do.devicecheck=0
 do.modules=0
-do.systemless=1
-do.cleanup=1
+do.systemless=0#Never Use it in NetHunter
+do.cleanup=0
 do.cleanuponabort=0
-device.name1=maguro
-device.name2=toro
-device.name3=toroplus
-device.name4=tuna
+device.name1=
+device.name2=
+device.name3=
+device.name4=
 device.name5=
 supported.versions=
 supported.patchlevels=
 '; } # end properties
 
 # shell variables
-block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;
-is_slot_device=0;
+##NetHunter Addition
+##block=
+##is_slot_device=0;
 ramdisk_compression=auto;
 
 
@@ -29,11 +31,87 @@ ramdisk_compression=auto;
 # import patching functions/variables - see for reference
 . tools/ak3-core.sh;
 
+## NetHunter additions
+
+SYSTEM="/system";
+SYSTEM_ROOT="/system_root";
+
+setperm() {
+	find "$3" -type d -exec chmod "$1" {} \;
+	find "$3" -type f -exec chmod "$2" {} \;
+}
+
+install() {
+	setperm "$2" "$3" "$home$1";
+	if [ "$4" ]; then
+		cp -r "$home$1" "$(dirname "$4")/";
+		return;
+	fi;
+	cp -r "$home$1" "$(dirname "$1")/";
+}
+
+[ -d $home/system/etc/firmware ] && {
+        ui_print "Installing firmware to ${SYSTEM}/etc"
+	install "/system/etc/firmware" 0755 0644 "$SYSTEM/etc/firmware";
+}
+
+[ -d $home/system/etc/init.d ] && {
+        ui_print "Installing init.d scripts"
+	install "/system/etc/init.d" 0755 0755 "$SYSTEM/etc/init.d";
+}
+
+[ -d $home/system/lib ] && {
+        ui_print "Copying 32-bit shared libraries to ${SYSTEM}/lib"
+	install "/system/lib" 0755 0644 "$SYSTEM/lib";
+}
+
+[ -d $home/system/lib64 ] && {
+        ui_print "Copying 64-bit shared libraries to ${SYSTEM}/lib"
+	install "/system/lib64" 0755 0644 "$SYSTEM/lib64";
+}
+
+[ -d $home/system/bin ] && {
+        ui_print "Installing ${SYSTEM}/bin binaries"
+	install "/system/bin" 0755 0755 "$SYSTEM/bin";
+}
+
+[ -d $home/system/xbin ] && {
+        ui_print "Installing ${SYSTEM}/xbin binaries"
+	install "/system/xbin" 0755 0755 "$SYSTEM/xbin";
+}
+
+[ -d $home/data/local ] && {
+        ui_print "Copying additional files to /data/local"
+	install "/data/local" 0755 0644;
+}
+
+[ -d $home/vendor/etc/init ] && {
+        mount /vendor;
+        chmod 644 $home/vendor/etc/init/*;
+	cp -r $home/vendor/etc/init/* /vendor/etc/init/;
+}
+
+[ -d $home/ramdisk-patch ] && {
+        ui_print "Patching Ramdisk"
+	setperm "0755" "0750" "$home/ramdisk-patch";
+        chown root:shell $home/ramdisk-patch/*;
+	cp -rp $home/ramdisk-patch/* "$SYSTEM_ROOT/";
+}
+
+if [ ! "$(grep /init.nethunter.rc $SYSTEM_ROOT/init.rc)" ]; then
+  insert_after_last "$SYSTEM_ROOT/init.rc" "import .*\.rc" "import /init.nethunter.rc";
+fi;
+
+if [ ! "$(grep /dev/hidg* $SYSTEM_ROOT/ueventd.rc)" ]; then
+  insert_after_last "$SYSTEM_ROOT/ueventd.rc" "/dev/kgsl.*root.*root" "# HID driver\n/dev/hidg* 0666 root root";
+fi;
+
+## End NetHunter additions
 
 ## AnyKernel file attributes
-# set permissions/ownership for included ramdisk files
-set_perm_recursive 0 0 755 644 $ramdisk/*;
-set_perm_recursive 0 0 750 750 $ramdisk/init* $ramdisk/sbin;
+##set permissions/ownership for included ramdisk files
+##set_perm_recursive 0 0 755 644 $ramdisk/*;
+##set_perm_recursive 0 0 750 750 $ramdisk/init* $ramdisk/sbin;
 
 
 ## AnyKernel install
@@ -41,21 +119,16 @@ dump_boot;
 
 # begin ramdisk changes
 
-# init.rc
-backup_file init.rc;
-replace_string init.rc "cpuctl cpu,timer_slack" "mount cgroup none /dev/cpuctl cpu" "mount cgroup none /dev/cpuctl cpu,timer_slack";
+# migrate from /overlay to /overlay.d to enable SAR Magisk
+if [ -d $ramdisk/overlay ]; then
+  rm -rf $ramdisk/overlay;
+fi;
 
-# init.tuna.rc
-backup_file init.tuna.rc;
-insert_line init.tuna.rc "nodiratime barrier=0" after "mount_all /fstab.tuna" "\tmount ext4 /dev/block/platform/omap/omap_hsmmc.0/by-name/userdata /data remount nosuid nodev noatime nodiratime barrier=0";
-append_file init.tuna.rc "bootscript" init.tuna;
-
-# fstab.tuna
-backup_file fstab.tuna;
-patch_fstab fstab.tuna /system ext4 options "noatime,barrier=1" "noatime,nodiratime,barrier=0";
-patch_fstab fstab.tuna /cache ext4 options "barrier=1" "barrier=0,nomblk_io_submit";
-patch_fstab fstab.tuna /data ext4 options "data=ordered" "nomblk_io_submit,data=writeback";
-append_file fstab.tuna "usbdisk" fstab;
+if [ -d $ramdisk/.backup ]; then
+  patch_cmdline "skip_override" "skip_override";
+else
+  patch_cmdline "skip_override" "";
+fi;
 
 # end ramdisk changes
 
