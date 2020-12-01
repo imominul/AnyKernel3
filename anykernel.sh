@@ -1,4 +1,4 @@
-#AnyKernel3 Ramdisk Mod Script
+# AnyKernel3 Ramdisk Mod Script
 # osm0sis @ xda-developers
 
 # Customized for NetHunter
@@ -17,16 +17,20 @@ device.name2=
 device.name3=
 device.name4=
 device.name5=
+device.name6=
+device.name7=
+device.name8=
+device.name9=
+device.name10=
 supported.versions=
-supported.patchlevels=
 '; } # end properties
 
 # shell variables
 ##NetHunter Addition
 ##block=
 ##is_slot_device=0;
-ramdisk_compression=auto;
 
+ramdisk_compression=auto;
 
 ## AnyKernel methods (DO NOT CHANGE)
 # import patching functions/variables - see for reference
@@ -85,13 +89,11 @@ install() {
         ui_print "- Copying additional files to /data/local"
 	install "/data/local" 0755 0644;
 }
-
 [ -d $home/vendor/etc/init ] && {
         mount /vendor;
         chmod 644 $home/vendor/etc/init/*;
 	cp -r $home/vendor/etc/init/* /vendor/etc/init/;
 }
-
 [ -d $home/ramdisk-patch ] && {
 	setperm "0755" "0750" "$home/ramdisk-patch";
         chown root:shell $home/ramdisk-patch/*;
@@ -129,7 +131,7 @@ set_perm_recursive 0 0 750 750 $ramdisk/init* $ramdisk/sbin;
 dump_boot;
 
 
-ui_print "- Patching ramdisk";
+ui_print "- Patching Ramdisk";
 # begin ramdisk changes
 
 # migrate from /overlay to /overlay.d to enable SAR Magisk
@@ -143,7 +145,7 @@ else
   patch_cmdline "skip_override" "";
 fi;
 
-#end ramdisk changes
+# end ramdisk changes
 
 write_boot;
 ## end install
