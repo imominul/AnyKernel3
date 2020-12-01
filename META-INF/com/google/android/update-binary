@@ -20,7 +20,7 @@ $BOOTMODE && DIR=/sdcard || DIR=$(dirname "$ZIPFILE");
 ##test -d /postinstall/tmp && POSTINSTALL=/postinstall;
 test "$ANDROID_ROOT" || ANDROID_ROOT=/system;
 
-test "$AKHOME" || AKHOME=/tmp/nethunter/boot-patcher;
+test "$home" || home=/tmp/nethunter/boot-patcher;
 
 ui_print() {
   until [ ! "$1" ]; do
@@ -46,15 +46,15 @@ int2ver() {
   fi;
 }
 cleanup() {
-  cd $(dirname $AKHOME);
-  rm -rf $AKHOME;
+  cd $(dirname $home);
+  rm -rf $home;
 }
 debugging() {
   case $(basename "$ZIPFILE" .zip) in
     *-debugging)
       ui_print " " "Creating debugging archive in $DIR...";
       test -f /tmp/recovery.log && local log=/tmp/recovery.log;
-      $BB tar -czf "$DIR/anykernel3-$(date +%Y-%m-%d_%H%M%S)-debug.tgz" $AKHOME $log;
+      $BB tar -czf "$DIR/anykernel3-$(date +%Y-%m-%d_%H%M%S)-debug.tgz" $home $log;
     ;;
   esac;
 }
@@ -307,7 +307,7 @@ do_levelcheck() {
 dump_moduleinfo() {
 cat <<EOF > $1;
 name=AK3 Helper Module
-version=$($BB awk '{ print $3 }' $AKHOME/vertmp) $($BB grep -oE '#.[0-9]' $AKHOME/vertmp)
+version=$($BB awk '{ print $3 }' $home/vertmp) $($BB grep -oE '#.[0-9]' $home/vertmp)
 versionCode=1
 author=AnyKernel3
 description=$KERNEL_STRING
@@ -326,9 +326,9 @@ do_modules() {
   test "$(file_getprop anykernel.sh do.modules)" == 1 || return 1;
   local block modcon moddir modtarget module slot umask;
   if [ "$(file_getprop anykernel.sh do.systemless)" == 1 ]; then
-    cd $AKHOME/modules;
+    cd $home/modules;
     ui_print " " "Creating kernel helper Magisk module...";
-    if [ -d /data/adb/magisk -a -f $AKHOME/split_img/.magisk ]; then
+    if [ -d /data/adb/magisk -a -f $home/split_img/.magisk ]; then
       umask=$(umask);
       umask 022;
       moddir=/data/adb/modules/ak3-helper;
@@ -339,13 +339,13 @@ do_modules() {
       $BB cp -rLf * $moddir;
       dump_moduleinfo $moddir/module.prop;
       dump_moduleremover $moddir/post-fs-data.sh;
-      cp -f $AKHOME/vertmp $moddir/version;
+      cp -f $home/vertmp $moddir/version;
       umask $umask;
     else
       ui_print "Magisk installation not found. Skipped!";
     fi;
   else
-    cd $AKHOME/modules;
+    cd $home/modules;
     ui_print " " "Pushing modules...";
     if [ -d /dev/block/mapper ]; then
       for block in system vendor; do
@@ -399,14 +399,14 @@ do_modules() {
       $BB mount -o ro,remount -t auto /vendor 2>/dev/null;
     fi;
   fi;
-  cd $AKHOME;
+  cd $home;
 }
 
 show_progress 1.34 4;
 ui_print "";
 ##cleanup;
-mkdir -p $AKHOME/bin;
-cd $AKHOME;
+mkdir -p $home/bin;
+cd $home;
 
 ##unzip -o "$ZIPFILE";
 
@@ -415,17 +415,17 @@ cd $AKHOME;
 ##fi;
 
 for ARCH32 in x86 arm; do
-  if [ -d $AKHOME/tools/$ARCH32 ]; then
-    BB=$AKHOME/tools/$ARCH32/busybox;
+  if [ -d $home/tools/$ARCH32 ]; then
+    BB=$home/tools/$ARCH32/busybox;
     chmod 755 $BB;
     $BB >/dev/null 2>&1;
     if [ $? == 0 ]; then
-      $BB mv -f $AKHOME/tools/$ARCH32/* $AKHOME/tools;
+      $BB mv -f $home/tools/$ARCH32/* $home/tools;
       break;
     fi;
   fi;
 done;
-BB=$AKHOME/tools/busybox;
+BB=$home/tools/busybox;
 chmod 755 $BB;
 $BB chmod -R 755 tools bin;
 $BB --install -s bin;
@@ -456,8 +456,8 @@ do_levelcheck;
 
 ui_print "- Installing...";
 CORE=$($BB grep -oE 'ak.*core.sh' anykernel.sh);
-test -f tools/$CORE || $BB ln -s $AKHOME/tools/ak*-core.sh $AKHOME/tools/$CORE;
-PATH="$AKHOME/bin:$PATH" home=$AKHOME $BB ash anykernel.sh $2;
+test -f tools/$CORE || $BB ln -s $home/tools/ak*-core.sh $home/tools/$CORE;
+PATH="$home/bin:$PATH" home=$home $BB ash anykernel.sh $2;
 if [ $? != 0 ]; then
   abort;
 fi;
